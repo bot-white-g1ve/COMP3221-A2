@@ -72,7 +72,7 @@ if __name__ == "__main__":
     
     server = Server(sub_client_num)
 
-    # Listening all clients 
+    # Listening and connect all clients  (wait 30s after first connection)
     users = []
 
     # !!! NOT SURE HERE
@@ -83,12 +83,14 @@ if __name__ == "__main__":
         server.send_parameters(server.model,users)
 
         # Recevie the local weights from users
-            #....
+
 
         # Aggregate the parameters (depends on sub-client)
         server.aggregate_parameters(total_train_samples)
 
-
+    # send finish message to all clients
+    # for user in users:
+    #     user.sendall("finish message")
 
 
 
