@@ -1,7 +1,6 @@
 import pandas as pd
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 import argparse
 
@@ -19,12 +18,20 @@ def sub_client(num):
     return num
 
 
+class LinearRegressionModel(nn.Module):
+    def __init__(self):
+        super(LinearRegressionModel, self).__init__()
+        self.model = nn.Linear(in_features=8, out_features=1)
+    
+    def forward(self, x):
+        return self.model(x)
+
 
 class Server():
     def __init__(self,sub_sample):
         self.users = []
         self.num_user = 5
-        self.model =nn.Linear(in_features=8, out_features=1)
+        self.model = LinearRegressionModel()
         self.iterations = 100
         self.sub_sample = sub_sample
     
@@ -35,8 +42,8 @@ class Server():
         for user in users:
             pass
           
-
     def aggregate_parameters(server_model, users, total_train_samples):
+
         # Clear global model before aggregation
         for param in server_model.parameters():
             param.data = torch.zeros_like(param.data)
@@ -45,6 +52,7 @@ class Server():
             for server_param, user_param in zip(server_model.parameters(), user.model.parameters()):
                 server_param.data = server_param.data + user_param.data.clone() * user.train_samples / total_train_samples
         return server_model
+
 
     def evaluate(users):
         total_mse = 0
@@ -64,19 +72,22 @@ if __name__ == "__main__":
     
     server = Server(sub_client_num)
 
-    # Generate a linear regression model with random parameters
-
     # Listening all clients 
     users = []
 
+    # !!! NOT SURE HERE
+    total_train_samples = 10000
 
     for i in range(server.iterations):
         # Send the global model
         server.send_parameters(server.model,users)
 
+        # Recevie the local weights from users
+            #....
+
         # Aggregate the parameters (depends on sub-client)
-        
-        # Brodcast
+        server.aggregate_parameters(total_train_samples)
+
 
 
 
