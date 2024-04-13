@@ -6,6 +6,8 @@ import argparse
 import socket
 import threading
 from datetime import datetime
+import pickle
+import time
 
 # for debuging
 def d_print(str):
@@ -34,21 +36,21 @@ class LinearRegressionModel(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-
 class Server():
-    def __init__(self,sub_sample, server_socket):
+    def __init__(self,sub_sample, port):
         self.clients = {}
         self.max_num_clients = 5
         self.model = LinearRegressionModel()
         self.iterations = 100
         self.sub_sample = sub_sample
-        self.socket = server_socket
+        
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.bind(('127.0.0.1', port))
         self.socket.listen(self.max_num_clients)
-
-    def send_parameters(self, server_model, users):
-        # send global model to each users
-        for user in users:
-            pass
+        self.send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+        self.first_handshake_received = False
+        self.current_iterations = 0
           
     def aggregate_parameters(self, server_model, users, total_train_samples):
         # Clear global model before aggregation
@@ -70,26 +72,49 @@ class Server():
     
     # receive messages and redirect to every functions
     def receive_messages(self):
-        print("server successfully launched, listening to clients...")
+        print("Server successfully launched, listening to clients...\n")
         while True:
             client_socket, client_address = self.socket.accept()
             message = client_socket.recv(2048).decode('utf-8')
             d_print(f"(In Server.receive_messages) {client_address} send {message}")
-            self.handshake_reply(message, client_socket)
+            if message.startswith('Handshake: '):
+                if not self.first_handshake_received:
+                # if this is the first client connected
+                    self.first_handshake_received = True
+                    print("The fisrt handshake received, wait for 30 seconds then training begins")
+                    def send_model_after_delay():
+                        time.sleep(30)
+                        self.send_model_dict()
+                    threading.Thread(target=send_model_after_delay).start()
+                self.handshake_reply(message, client_socket)
 
     # handing handshake, add to self.clients
     def handshake_reply(self, message, client_socket):
         parts = message.split(", ")
         client_id = parts[1].split()[-1]
         client_train_data_size = int(parts[2].split()[-1])
+        client_port = int(parts[3].split()[-1])
         #d_print(f"(In Server.handshake_reply) The client_id is {client_id}")
 
-        self.clients[client_id] = client_train_data_size
+        self.clients[client_id] = {'size': client_train_data_size, 'port': client_port}
         
         response_message = f"copy, {client_id}"
         d_print(f"(In Server.handshake_reply) Server reply {response_message}")
         client_socket.send(response_message.encode('utf-8'))
         client_socket.close()
+    
+    # send the combined model to all clients
+    def send_model_dict(self):
+        print("Broadcasting new global model\n")
+        model_dict = self.model.state_dict()
+        serialized_model_dict = pickle.dumps(model_dict)
+        for client in self.clients.keys():
+            client_port = self.clients[client]['port']
+            self.send_socket.connect(('127.0.0.1', client_port))
+            message = f"ServerSend: {serialized_model_dict}"
+            self.send_socket.send(message.encode('utf-8'))
+            d_print(f"(In send_model_dict) Server sends: {message}")
+            d_print(f"(In send_model_dict) The message size is: {len(message.encode('utf-8'))}")
 
 if __name__ == "__main__":
     d_print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -101,10 +126,7 @@ if __name__ == "__main__":
 
     print("Server starting...\n")
 
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(('127.0.0.1', args.server_port))
-
-    server = Server(args.sub_client, server_socket)
+    server = Server(args.sub_client, args.server_port)
     server.receive_messages()
 
 

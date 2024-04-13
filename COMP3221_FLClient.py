@@ -6,6 +6,7 @@ import numpy as np
 import argparse
 import socket
 from datetime import datetime
+import pickle
 
 # for debuging
 def d_print(str):
@@ -34,7 +35,7 @@ def opt_method_type(opt_method):
 
 
 class Client():
-    def __init__(self, id,port, learning_rate, batch_size, socket):
+    def __init__(self, id,port, learning_rate, batch_size):
         self.id = id
         self.port = port
         self.batch_size = batch_size
@@ -45,7 +46,10 @@ class Client():
         self.model = nn.Linear(in_features=8, out_features=1)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
 
-        self.socket = socket
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.receive_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.receive_socket.bind(('127.0.0.1', port))
+        self.receive_socket.listen(1)
 
     def load_data_from_csv(self, csv_path):
        # Read dataset
@@ -70,10 +74,6 @@ class Client():
             X_normalized[:, i] = (X[:, i] - min_val) / (max_val - min_val)
 
         return X_normalized, y
-
-    def set_parameters(self, model):
-        for old_param, new_param in zip(self.model.parameters(), model.parameters()):
-            old_param.data = new_param.data.clone()
 
     def train(self, epochs):
         print("Local training...")
@@ -126,9 +126,6 @@ class Client():
         d_print(f"(In Client.load_and_preprocess_data) the num of data points: {len(self.train_data)}")
         d_print(f"(In Client.load_and_preprocess_data) the num of batches: {len(self.trainloader)}")
 
-    def updata_local_model(self, model_state):
-        self.model.load_state_dict(model_state)
-    
     def hand_shake(self):
         default_timeout = self.socket.gettimeout()
         self.socket.settimeout(20)
@@ -138,7 +135,7 @@ class Client():
             print("error connecting to the server, terminate!")
             exit(1)
 
-        message_sent = f"hello, I am {self.id}, length {len(self.train_data)}"
+        message_sent = f"Handshake: hello, I am {self.id}, length {len(self.train_data)}, port {self.port}"
         self.socket.send(message_sent.encode())
         d_print(f"(In Client.hand_shake) {self.id} send {message_sent}")
 
@@ -157,8 +154,23 @@ class Client():
         finally:
             self.socket.settimeout(default_timeout)
         
+    def receive_model(self):
+        server_socket, server_address = self.receive_socket.accept()
+        message = server_socket.recv(4096).decode('utf-8')
+        if message.startswith('ServerSend: '):
+            print(f"I am {self.id}")
+            print("Received new global model")
+            d_print(f"(In receive_model) Receive from server: {message}")
+            parts = message.split(": ")
+            serialized_model_dict = parts[1]
+            model_dict = pickle.loads(serialized_model_dict.encode('utf-8'))
+            self.model.load_state_dict(model_dict)
+        else:
+            print("error receiving aggregated model, terminate!")
+            exit(1)
+
     def send_local_model(self):
-        pass
+        self.socket.connect(('127.0.0.1', 6000))
     
 if __name__ == "__main__":
     d_print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -172,18 +184,11 @@ if __name__ == "__main__":
     print("Client starting...\n")
 
     client_id,client_port,opt_method = args.client_id,args.client_port,args.opt_method
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    client = Client(client_id,client_port,0.001, 64, client_socket)
+    client = Client(client_id,client_port,0.001, 64)
     client.hand_shake()
 
-    # local training part
-    train_loss = client.train(10)
-
-    # evaulation part
-
-    # assume received model
-    model_state = client.model.state_dict()
-    client.updata_local_model(model_state)
-   
-    test_loss = client.test()
+    while True:
+        client.receive_model()
+        test_loss = client.test()
+        train_loss = client.train(10)
