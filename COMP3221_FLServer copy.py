@@ -6,8 +6,8 @@ import argparse
 import socket
 import threading
 from datetime import datetime
-import time
 import pickle
+import time
 
 # for debuging
 def d_print(str):
@@ -28,11 +28,19 @@ def sub_client(num):
         raise argparse.ArgumentTypeError("Sub client number must be within 0-4")
     return num
 
+class LinearRegressionModel(nn.Module):
+    def __init__(self):
+        super(LinearRegressionModel, self).__init__()
+        self.model = nn.Linear(in_features=8, out_features=1)
+    
+    def forward(self, x):
+        return self.model(x)
+
 class Server():
     def __init__(self,sub_sample, port):
         self.clients = {}
         self.max_num_clients = 5
-        self.model = nn.Linear(in_features=8, out_features=1)
+        self.model = LinearRegressionModel()
         self.iterations = 100
         self.sub_sample = sub_sample
         
@@ -73,10 +81,9 @@ class Server():
                 if not self.first_handshake_received:
                 # if this is the first client connected
                     self.first_handshake_received = True
-                    print("The fisrt handshake received, wait for 30 seconds then training begins\n")
-                    d_print("(In Server.receive_messages) Waiting for 30 seconds then boardcase")
+                    print("The fisrt handshake received, wait for 30 seconds then training begins")
                     def send_model_after_delay():
-                        time.sleep(10) #deb
+                        time.sleep(30)
                         self.send_model_dict()
                     threading.Thread(target=send_model_after_delay).start()
                 self.handshake_reply(message, client_socket)
@@ -104,9 +111,10 @@ class Server():
         for client in self.clients.keys():
             client_port = self.clients[client]['port']
             self.send_socket.connect(('127.0.0.1', client_port))
-            self.send_socket.send(serialized_model_dict)
-            d_print(f"(In send_model_dict) Server sends: {model_dict}")
-            d_print(f"(In send_model_dict) The message size is: {len(serialized_model_dict)}")
+            message = f"ServerSend: {serialized_model_dict}"
+            self.send_socket.send(message.encode('utf-8'))
+            d_print(f"(In send_model_dict) Server sends: {message}")
+            d_print(f"(In send_model_dict) The message size is: {len(message.encode('utf-8'))}")
 
 if __name__ == "__main__":
     d_print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

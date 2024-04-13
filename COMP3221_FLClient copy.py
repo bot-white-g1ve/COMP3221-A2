@@ -156,13 +156,18 @@ class Client():
         
     def receive_model(self):
         server_socket, server_address = self.receive_socket.accept()
-        serialized_model_dict = server_socket.recv(4096)
-        model_dict = pickle.loads(serialized_model_dict)
-        print(f"I am {self.id}")
-        print("Received new global model")
-        d_print(f"(In receive_model) Receive from server: {model_dict}")
-        self.model.load_state_dict(model_dict)
-        server_socket.close()
+        message = server_socket.recv(4096).decode('utf-8')
+        if message.startswith('ServerSend: '):
+            print(f"I am {self.id}")
+            print("Received new global model")
+            d_print(f"(In receive_model) Receive from server: {message}")
+            parts = message.split(": ")
+            serialized_model_dict = parts[1]
+            model_dict = pickle.loads(serialized_model_dict.encode('utf-8'))
+            self.model.load_state_dict(model_dict)
+        else:
+            print("error receiving aggregated model, terminate!")
+            exit(1)
 
     def send_local_model(self):
         self.socket.connect(('127.0.0.1', 6000))
