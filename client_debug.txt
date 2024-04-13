@@ -1,0 +1,21 @@
+
+2024-04-13 16:54:48
+(In Client.load_and_preprocess_data) the num of data points: 2806
+(In Client.load_and_preprocess_data) the num of batches: 44
+
+2024-04-13 16:59:47
+(In Client.load_and_preprocess_data) the num of data points: 2806
+(In Client.load_and_preprocess_data) the num of batches: 44
+(In Client.hand_shake) client1 send hello, I am fclient1, length 2806
+
+2024-04-13 17:00:48
+(In Client.load_and_preprocess_data) the num of data points: 2806
+(In Client.load_and_preprocess_data) the num of batches: 44
+(In Client.hand_shake) client1 send hello, I am client1, length 2806
+
+2024-04-13 17:03:15
+(In Client.load_and_preprocess_data) the num of data points: 2806
+(In Client.load_and_preprocess_data) the num of batches: 44
+(In Client.hand_shake) client1 send hello, I am client1, length 2806
+(In Client.hand_shake) the response is copy, client1
+(In Client.hand_shake) Success hand-shaking

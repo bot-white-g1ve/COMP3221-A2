@@ -1,0 +1,13 @@
+
+2024-04-13 16:54:39
+('127.0.0.1', 54131) send 
+
+2024-04-13 16:59:39
+(In Server.receive_messages) ('127.0.0.1', 54178) send hello, I am fclient1, length 2806
+
+2024-04-13 17:00:38
+(In Server.receive_messages) ('127.0.0.1', 54187) send hello, I am client1, length 2806
+
+2024-04-13 17:03:05
+(In Server.receive_messages) ('127.0.0.1', 54202) send hello, I am client1, length 2806
+(In Server.handshake_reply) Server reply copy, client1

@@ -5,19 +5,26 @@ import numpy as np
 import argparse
 import socket
 import threading
+from datetime import datetime
 
+# for debuging
+def d_print(str):
+    with open("server_debug.txt", 'a') as f:
+        f.write(f"{str}\n")
+
+# for checking server port validity
 def port_server(id):
     id = int(id)
     if id!=6000:
         raise argparse.ArgumentTypeError(f"Server port must be 6000")
     return id
 
+# for checking sub_client value validity
 def sub_client(num):
     num = int(num)
     if num < 0 or num > 4:
         raise argparse.ArgumentTypeError("Sub client number must be within 0-4")
     return num
-
 
 class LinearRegressionModel(nn.Module):
     def __init__(self):
@@ -29,22 +36,21 @@ class LinearRegressionModel(nn.Module):
 
 
 class Server():
-    def __init__(self,sub_sample):
-        self.users = []
-        self.num_user = 5
+    def __init__(self,sub_sample, server_socket):
+        self.clients = {}
+        self.max_num_clients = 5
         self.model = LinearRegressionModel()
         self.iterations = 100
         self.sub_sample = sub_sample
-    
+        self.socket = server_socket
+        self.socket.listen(self.max_num_clients)
 
-    def send_parameters(server_model, users):
-
+    def send_parameters(self, server_model, users):
         # send global model to each users
         for user in users:
             pass
           
-    def aggregate_parameters(server_model, users, total_train_samples):
-
+    def aggregate_parameters(self, server_model, users, total_train_samples):
         # Clear global model before aggregation
         for param in server_model.parameters():
             param.data = torch.zeros_like(param.data)
@@ -53,48 +59,55 @@ class Server():
             for server_param, user_param in zip(server_model.parameters(), user.model.parameters()):
                 server_param.data = server_param.data + user_param.data.clone() * user.train_samples / total_train_samples
 
-                
         return server_model
 
 
-    def evaluate(users):
+    def evaluate(self, users):
         total_mse = 0
         for user in users:
             total_mse += user.test()
         return total_mse/len(users)
+    
+    # receive messages and redirect to every functions
+    def receive_messages(self):
+        print("server successfully launched, listening to clients...")
+        while True:
+            client_socket, client_address = self.socket.accept()
+            message = client_socket.recv(2048).decode('utf-8')
+            d_print(f"(In Server.receive_messages) {client_address} send {message}")
+            self.handshake_reply(message, client_socket)
 
+    # handing handshake, add to self.clients
+    def handshake_reply(self, message, client_socket):
+        parts = message.split(", ")
+        client_id = parts[1].split()[-1]
+        client_train_data_size = int(parts[2].split()[-1])
+        #d_print(f"(In Server.handshake_reply) The client_id is {client_id}")
+
+        self.clients[client_id] = client_train_data_size
+        
+        response_message = f"copy, {client_id}"
+        d_print(f"(In Server.handshake_reply) Server reply {response_message}")
+        client_socket.send(response_message.encode('utf-8'))
+        client_socket.close()
 
 if __name__ == "__main__":
+    d_print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
     parser = argparse.ArgumentParser(description='Federated Learning Server')
     parser.add_argument('server_port', type=port_server, help='Port number for the server')
     parser.add_argument('sub_client', type=sub_client, help='Sub-client number')
     args = parser.parse_args()
 
-    server = Server(args.sub_client)
+    print("Server starting...\n")
 
-    # Setup server socket
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-        server_socket.bind(('127.0.0.1', args.server_port))
-        server_socket.listen(5) 
-        
-        # Main server logic here
-        users = []  # List of connected client sockets
-        total_train_samples = 10000  # Hypothetical number  
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(('127.0.0.1', args.server_port))
+
+    server = Server(args.sub_client, server_socket)
+    server.receive_messages()
 
 
-        
-        for i in range(server.iterations):
-            # Send the global model
-
-            # server.send_parameters(server.model, users)
-
-            # Assume clients send their models asynchronously and are handled in their threads
-
-            # Aggregate the parameters after receiving all updates
-            # server.aggregate_parameters(server.model, users, total_train_samples)
-            pass
-        # Finish all training
-        print("Training complete")
 
 
 

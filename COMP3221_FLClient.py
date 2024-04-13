@@ -5,6 +5,12 @@ from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 import argparse
 import socket
+from datetime import datetime
+
+# for debuging
+def d_print(str):
+    with open("client_debug.txt", 'a') as f:
+        f.write(f"{str}\n")
 
 # check if client_id is valid
 def client_id_type(client_id):
@@ -39,8 +45,7 @@ class Client():
         self.model = nn.Linear(in_features=8, out_features=1)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
 
-        self.sokcet = socket
-        self.socket.connect("127.0.0.1", 6000)
+        self.socket = socket
 
     def load_data_from_csv(self, csv_path):
        # Read dataset
@@ -117,6 +122,9 @@ class Client():
         # Define DataLoader for iterable dataset
         self.trainloader = DataLoader(self.train_data, batch_size=self.batch_size)
         self.testloader = DataLoader(self.test_data, batch_size=self.batch_size)
+        
+        d_print(f"(In Client.load_and_preprocess_data) the num of data points: {len(self.train_data)}")
+        d_print(f"(In Client.load_and_preprocess_data) the num of batches: {len(self.trainloader)}")
 
     def updata_local_model(self, model_state):
         self.model.load_state_dict(model_state)
@@ -124,16 +132,25 @@ class Client():
     def hand_shake(self):
         default_timeout = self.socket.gettimeout()
         self.socket.settimeout(20)
+        try:
+            self.socket.connect(("127.0.0.1", 6000))
+        except Exception:
+            print("error connecting to the server, terminate!")
+            exit(1)
 
-        self.socket.send(f"hello, I am f{self.id}, length {}")
+        message_sent = f"hello, I am {self.id}, length {len(self.train_data)}"
+        self.socket.send(message_sent.encode())
+        d_print(f"(In Client.hand_shake) {self.id} send {message_sent}")
 
         try:
             response = self.socket.recv(4096).decode()
-            if response != f"copy, f{self.id}":
+            d_print(f"(In Client.hand_shake) the response is {response}")
+            if response != f"copy, {self.id}":
                 print("Error hand-shaking, terminate")
                 exit(1)
             else:
                 pass
+                d_print("(In Client.hand_shake) Success hand-shaking")
         except socket.timeout:
             print("Error hand-shaking, terminate")
             exit(1)
@@ -144,17 +161,21 @@ class Client():
         pass
     
 if __name__ == "__main__":
+    d_print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
     parser = argparse.ArgumentParser(description='Federated Learning-Client')
     parser.add_argument('client_id', type=client_id_type, help='Client ID')
     parser.add_argument('client_port', type=port_client_type, help='Port number')
     parser.add_argument('opt_method', type=opt_method_type, help="Optimization method")
-
     args = parser.parse_args()
+
+    print("Client starting...\n")
 
     client_id,client_port,opt_method = args.client_id,args.client_port,args.opt_method
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     client = Client(client_id,client_port,0.001, 64, client_socket)
+    client.hand_shake()
 
     # local training part
     train_loss = client.train(10)
@@ -166,5 +187,3 @@ if __name__ == "__main__":
     client.updata_local_model(model_state)
    
     test_loss = client.test()
-
-
