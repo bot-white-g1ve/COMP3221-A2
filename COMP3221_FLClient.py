@@ -170,6 +170,7 @@ class Client():
         server_socket.close()
 
     def send_local_model(self):
+        print("Sending new local model\n")
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect(('127.0.0.1', 6000))
         d_print(f"(In send_local_model) socket re-created and re-connected")

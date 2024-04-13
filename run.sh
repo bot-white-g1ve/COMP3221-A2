@@ -4,4 +4,5 @@ osascript -e 'tell application "Terminal" to do script "cd '"$dir"';python3 COMP
 # sleep and waiting for the server to finish starting
 echo "We are waiting for the server to finish starting..."
 sleep 5
-osascript -e 'tell application "Terminal" to do script "cd '"$dir"';python3 COMP3221_FLClient.py client1 6001 1"'
+osascript -e 'tell application "Terminal" to do script "cd '"$dir"';python3 COMP3221_FLClient.py client1 6001 0"'
+osascript -e 'tell application "Terminal" to do script "cd '"$dir"';python3 COMP3221_FLClient.py client2 6002 0"'

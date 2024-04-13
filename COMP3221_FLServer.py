@@ -8,6 +8,7 @@ import threading
 from datetime import datetime
 import time
 import pickle
+import random
 
 # for debuging
 def d_print(str):
@@ -43,18 +44,32 @@ class Server():
         
         self.first_handshake_received = False
         self.current_iteration = 0
+        self.num_current_received = 0
           
-    def aggregate_parameters(self, server_model, users, total_train_samples):
-        # Clear global model before aggregation
-        for param in server_model.parameters():
-            param.data = torch.zeros_like(param.data)
-
-        for user in users:
-            for server_param, user_param in zip(server_model.parameters(), user.model.parameters()):
-                server_param.data = server_param.data + user_param.data.clone() * user.train_samples / total_train_samples
-
-        return server_model
-
+    def aggregate_parameters(self):
+        print("Aggregating new global model")
+        # Get the state dictionary of the server model
+        server_state_dict = self.model.state_dict()
+        d_print(f"(In aggregate_parameters) The original dict_state is {server_state_dict}")
+        # Initialize an empty state dict to accumulate updates
+        aggregated_state_dict = {key: torch.zeros_like(value) for key, value in server_state_dict.items()}
+        # Determine the number of clients to subsample or include all
+        if self.sub_sample > 0:
+            selected_clients = random.sample(list(self.clients.keys()),self.sub_sample)
+        else:
+            selected_clients = list(self.clients.keys())
+        # Calculate the total training samples for the selected clients
+        total_samples_for_aggregation = sum(self.clients[client_id]['size'] for client_id in selected_clients)
+        # Accumulate updates only from the selected clients
+        for client_id in selected_clients:
+            client = self.clients[client_id]
+            user_state_dict = client['model']
+            for key in server_state_dict:
+                aggregated_state_dict[key] += user_state_dict[key] * client['size'] / total_samples_for_aggregation
+        # Load the aggregated state dict back into the server model
+        d_print(f"(In aggregate_parameters) The aggregated_state_dict is {aggregated_state_dict}")
+        self.model.load_state_dict(aggregated_state_dict, strict=True)
+        self.send_model_dict()
 
     def evaluate(self, users):
         total_mse = 0
@@ -76,7 +91,7 @@ class Server():
                     print("The fisrt handshake received, wait for 30 seconds then training begins\n")
                     d_print("(In Server.receive_messages) Waiting for 30 seconds then boardcase")
                     def send_model_after_delay():
-                        time.sleep(5) #deb
+                        time.sleep(15) #deb
                         self.send_model_dict()
                     threading.Thread(target=send_model_after_delay).start()
                 self.handshake_reply(message, client_socket)
@@ -104,6 +119,7 @@ class Server():
         model_dict = self.model.state_dict()
         serialized_model_dict = pickle.dumps(model_dict)
         for client in self.clients.keys():
+            self.send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_port = self.clients[client]['port']
             self.send_socket.connect(('127.0.0.1', client_port))
             self.send_socket.send(serialized_model_dict)
@@ -113,6 +129,7 @@ class Server():
             self.send_socket.close()
         
         self.current_iteration+=1
+        self.num_current_received = 0
         d_print(f"(In send_model_dict) Start iteration {self.current_iteration}")
         print(f"Global Iteration: {self.current_iteration}")
         print(f"Total Number of Clients: {len(self.clients.keys())}")
@@ -126,6 +143,10 @@ class Server():
         self.clients[client_id]['model'] = model_dict
         self.clients[client_id]['current_received'] = True
         print(f"Getting local model from {client_id}")
+        self.num_current_received+=1
+        if self.num_current_received == len(self.clients.keys()):
+            d_print("(In clientmodel_handle) num_current_received == num_clients, begin aggregate_parameters")
+            self.aggregate_parameters()
         client_socket.close()
 
 if __name__ == "__main__":
@@ -140,44 +161,3 @@ if __name__ == "__main__":
 
     server = Server(args.sub_client, args.server_port)
     server.receive_messages()
-
-
-
-
-
-
-
-
-
-
-    # # Print weights and biases
-    # for name, param in server.model.named_parameters():
-    #     if param.requires_grad:
-    #         print(name, param.data)
-
-
-    # # Listening and connect all clients  (wait 30s after first connection)
-    # users = []
-
-    # # !!! NOT SURE HERE
-    # total_train_samples = 10000
-
-    # for i in range(server.iterations):
-    #     # Send the global model
-    #     server.send_parameters(server.model,users)
-
-    #     # Recevie the local weights from users
-
-
-    #     # Aggregate the parameters (depends on sub-client)
-    #     server.aggregate_parameters(total_train_samples)
-
-    # # send finish message to all clients
-    # # for user in users:
-    # #     user.sendall("finish message")
-
-
-
-
-
-
