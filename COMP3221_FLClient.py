@@ -4,19 +4,23 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 import argparse
+import socket
 
+# check if client_id is valid
 def client_id_type(client_id):
     valid_client_ids = [f'client{i}' for i in range(1,6)]
     if client_id not in valid_client_ids:
         raise argparse.ArgumentTypeError(f"{client_id} is an invalid clientID. Choose from client1-5.")
     return client_id
 
+# check if port is vlid
 def port_client_type(port_client):
     port_client = int(port_client)
     if port_client < 6001 or port_client > 6005:
         raise argparse.ArgumentTypeError("Client port must be between 6001 and 6005.")
     return port_client
 
+# check if opt type is valid
 def opt_method_type(opt_method):
     if opt_method not in ['0', '1']:
         raise argparse.ArgumentTypeError("Optimisation must be '0' for Gradient Descent or '1' for Mini-Batch GD.")
@@ -24,7 +28,7 @@ def opt_method_type(opt_method):
 
 
 class Client():
-    def __init__(self, id,port, learning_rate, batch_size):
+    def __init__(self, id,port, learning_rate, batch_size, socket):
         self.id = id
         self.port = port
         self.batch_size = batch_size
@@ -32,11 +36,12 @@ class Client():
 
         self.load_and_preprocess_data()
 
-        # TBC
         self.model = nn.Linear(in_features=8, out_features=1)
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=learning_rate)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
 
-        
+        self.sokcet = socket
+        self.socket.connect("127.0.0.1", 6000)
+
     def load_data_from_csv(self, csv_path):
        # Read dataset
         df = pd.read_csv(csv_path)
@@ -66,29 +71,36 @@ class Client():
             old_param.data = new_param.data.clone()
 
     def train(self, epochs):
+        print("Local training...")
         self.model.train()
+        
+        total_loss = 0
+        total_batches = 0
         for epoch in range(1, epochs + 1):
-            self.model.train()
             for batch_idx, (X, y) in enumerate(self.trainloader):
                 self.optimizer.zero_grad()
                 output = self.model(X).squeeze()
                 loss = self.loss(output, y)
+                total_loss += loss.item()
+                total_batches += 1
                 loss.backward()
                 self.optimizer.step()
 
-        return loss.data
+        print(f"Training MSA: {total_loss/total_batches}")
+        return total_loss/total_batches
 
     def test(self):
         self.model.eval()
-        mse = 0
+        total_loss = 0
+        total_batch = 0
         for x, y in self.testloader:
             y_pred = self.model(x).squeeze()
-           
-            mse += self.loss(y_pred, y)
+            total_loss += self.loss(y_pred, y)
+            total_batch += 1
 
-        print(f"MSE of client is {mse}")
+        print(f"Testing MSE: {total_loss/total_batch}")
 
-        return mse
+        return total_loss/total_batch
     
     def load_and_preprocess_data(self):
 
@@ -109,10 +121,27 @@ class Client():
     def updata_local_model(self, model_state):
         self.model.load_state_dict(model_state)
     
+    def hand_shake(self):
+        default_timeout = self.socket.gettimeout()
+        self.socket.settimeout(20)
+
+        self.socket.send(f"hello, I am f{self.id}, length {}")
+
+        try:
+            response = self.socket.recv(4096).decode()
+            if response != f"copy, f{self.id}":
+                print("Error hand-shaking, terminate")
+                exit(1)
+            else:
+                pass
+        except socket.timeout:
+            print("Error hand-shaking, terminate")
+            exit(1)
+        finally:
+            self.socket.settimeout(default_timeout)
+        
     def send_local_model(self):
         pass
-
-
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Federated Learning-Client')
@@ -123,21 +152,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     client_id,client_port,opt_method = args.client_id,args.client_port,args.opt_method
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    client = Client(client_id,client_port,0.001, 64)
+    client = Client(client_id,client_port,0.001, 64, client_socket)
 
     # local training part
-    loss = client.train(10)
-    print(round(loss.item(),2))
+    train_loss = client.train(10)
 
     # evaulation part
 
     # assume received model
     model_state = client.model.state_dict()
     client.updata_local_model(model_state)
-    print(model_state)
    
-   # evaulate 
-    client.test()
+    test_loss = client.test()
 
 
