@@ -92,6 +92,7 @@ class Client():
                 self.optimizer.step()
 
         print(f"Training MSA: {total_loss/total_batches}")
+        d_print("train finished")
         return total_loss/total_batches
 
     def test(self):
@@ -104,6 +105,7 @@ class Client():
             total_batch += 1
 
         print(f"Testing MSE: {total_loss/total_batch}")
+        d_print("test finished")
 
         return total_loss/total_batch
     
@@ -154,6 +156,9 @@ class Client():
         finally:
             self.socket.settimeout(default_timeout)
         
+        d_print(f"(In Client.hand_shake) The client close client.socket")
+        self.socket.close()
+        
     def receive_model(self):
         server_socket, server_address = self.receive_socket.accept()
         serialized_model_dict = server_socket.recv(4096)
@@ -165,7 +170,16 @@ class Client():
         server_socket.close()
 
     def send_local_model(self):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect(('127.0.0.1', 6000))
+        d_print(f"(In send_local_model) socket re-created and re-connected")
+        message = f"ClientModel: I am {self.id}"
+        self.socket.send(message.encode('utf-8'))
+        d_print(f"(In send_local_model) Client sends {message}")
+        model_dict = self.model.state_dict()
+        serialized_model_dict = pickle.dumps(model_dict)
+        self.socket.send(serialized_model_dict)
+        d_print(f"(In send_local_model) Client then sends {model_dict}")
     
 if __name__ == "__main__":
     d_print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -187,3 +201,4 @@ if __name__ == "__main__":
         client.receive_model()
         test_loss = client.test()
         train_loss = client.train(10)
+        client.send_local_model()

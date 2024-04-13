@@ -42,7 +42,7 @@ class Server():
         self.send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         
         self.first_handshake_received = False
-        self.current_iterations = 0
+        self.current_iteration = 0
           
     def aggregate_parameters(self, server_model, users, total_train_samples):
         # Clear global model before aggregation
@@ -76,10 +76,12 @@ class Server():
                     print("The fisrt handshake received, wait for 30 seconds then training begins\n")
                     d_print("(In Server.receive_messages) Waiting for 30 seconds then boardcase")
                     def send_model_after_delay():
-                        time.sleep(10) #deb
+                        time.sleep(5) #deb
                         self.send_model_dict()
                     threading.Thread(target=send_model_after_delay).start()
                 self.handshake_reply(message, client_socket)
+            elif message.startswith('ClientModel: '):
+                self.clientmodel_handle(message, client_socket)
 
     # handing handshake, add to self.clients
     def handshake_reply(self, message, client_socket):
@@ -105,8 +107,26 @@ class Server():
             client_port = self.clients[client]['port']
             self.send_socket.connect(('127.0.0.1', client_port))
             self.send_socket.send(serialized_model_dict)
+            self.clients[client]['current_received'] = False # Haven't received the client's model dict in this iteration
             d_print(f"(In send_model_dict) Server sends: {model_dict}")
             d_print(f"(In send_model_dict) The message size is: {len(serialized_model_dict)}")
+            self.send_socket.close()
+        
+        self.current_iteration+=1
+        d_print(f"(In send_model_dict) Start iteration {self.current_iteration}")
+        print(f"Global Iteration: {self.current_iteration}")
+        print(f"Total Number of Clients: {len(self.clients.keys())}")
+    
+    def clientmodel_handle(self, message, client_socket):
+        parts = message.split(": ")
+        client_id = parts[1].split()[-1]
+        serialized_model_dict = client_socket.recv(4096)
+        model_dict = pickle.loads(serialized_model_dict)
+        d_print(f"(In Clientmodel_handle) Client sends model_dict: {model_dict}")
+        self.clients[client_id]['model'] = model_dict
+        self.clients[client_id]['current_received'] = True
+        print(f"Getting local model from {client_id}")
+        client_socket.close()
 
 if __name__ == "__main__":
     d_print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
