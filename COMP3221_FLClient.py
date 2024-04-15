@@ -91,7 +91,7 @@ class Client():
                 loss.backward()
                 self.optimizer.step()
 
-        print(f"Training MSA: {total_loss/total_batches}")
+        print(f"Training MSE: {total_loss/total_batches}")
         d_print("train finished")
         return total_loss/total_batches
 
@@ -141,7 +141,7 @@ class Client():
         # Creating the handshake message
         handshake_info = {
             "type": "string",
-            "sentence": f"Handshake: hello, I am {self.id}, length {len(self.train_data)}, port {self.port}"
+            "message": f"Handshake: hello, I am {self.id}, length {len(self.train_data)}, port {self.port}"
         }
         # Serializing the message with pickle
         message_sent = pickle.dumps(handshake_info)
@@ -175,6 +175,12 @@ class Client():
         server_socket, server_address = self.receive_socket.accept()
         serialized_model_dict = server_socket.recv(4096)
         model_dict = pickle.loads(serialized_model_dict)
+
+        if len(model_dict) == 1 and model_dict['message'] == "Completed":
+            print("Finished Training")
+            server_socket.close()
+            exit(1)
+
         print(f"I am {self.id}")
         print("Received new global model")
         d_print(f"(In receive_model) Receive from server: {model_dict}")
@@ -189,7 +195,7 @@ class Client():
  
         message_info = {
         "type": "model",
-        "sentence": f"ClientModel: I am {self.id}",
+        "message": f"ClientModel: I am {self.id}",
         "model_param": self.model.state_dict()
         }
 
