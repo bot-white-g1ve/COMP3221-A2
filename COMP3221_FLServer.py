@@ -82,20 +82,30 @@ class Server():
         print("Server successfully launched, listening to clients...\n")
         while True:
             client_socket, client_address = self.socket.accept()
-            message = client_socket.recv(2048).decode('utf-8')
+            serialized_data = client_socket.recv(4096)
+            if serialized_data:
+                # Deserialize the data using pickle
+                message = pickle.loads(serialized_data)
+
+            else:
+                print("error: empty data")
+
             d_print(f"(In Server.receive_messages) {client_address} send {message}")
-            if message.startswith('Handshake: '):
+
+            if message['type'] == 'string' and message['sentence'].startswith('Handshake: '):
                 if not self.first_handshake_received:
                 # if this is the first client connected
                     self.first_handshake_received = True
                     print("The fisrt handshake received, wait for 30 seconds then training begins\n")
                     d_print("(In Server.receive_messages) Waiting for 30 seconds then boardcase")
                     def send_model_after_delay():
-                        time.sleep(15) #deb
+                        time.sleep(5) #deb
                         self.send_model_dict()
                     threading.Thread(target=send_model_after_delay).start()
-                self.handshake_reply(message, client_socket)
-            elif message.startswith('ClientModel: '):
+                    
+                self.handshake_reply(message['sentence'], client_socket)
+
+            elif message['type'] == 'model' and message['sentence'].startswith('ClientModel: '):
                 self.clientmodel_handle(message, client_socket)
 
     # handing handshake, add to self.clients
@@ -104,13 +114,18 @@ class Server():
         client_id = parts[1].split()[-1]
         client_train_data_size = int(parts[2].split()[-1])
         client_port = int(parts[3].split()[-1])
-        #d_print(f"(In Server.handshake_reply) The client_id is {client_id}")
 
         self.clients[client_id] = {'size': client_train_data_size, 'port': client_port}
         
-        response_message = f"copy, {client_id}"
+        response_message = {
+            "type": "string",
+            "sentence": f"copy, {client_id}"
+            }
+        # Serializing the message with pickle
+        response_message = pickle.dumps(response_message)
+        
         d_print(f"(In Server.handshake_reply) Server reply {response_message}")
-        client_socket.send(response_message.encode('utf-8'))
+        client_socket.send(response_message)
         client_socket.close()
     
     # send the combined model to all clients
@@ -127,7 +142,7 @@ class Server():
             d_print(f"(In send_model_dict) Server sends: {model_dict}")
             d_print(f"(In send_model_dict) The message size is: {len(serialized_model_dict)}")
             self.send_socket.close()
-        
+
         self.current_iteration+=1
         self.num_current_received = 0
         d_print(f"(In send_model_dict) Start iteration {self.current_iteration}")
@@ -135,10 +150,10 @@ class Server():
         print(f"Total Number of Clients: {len(self.clients.keys())}")
     
     def clientmodel_handle(self, message, client_socket):
+        
+        message,model_dict = message['sentence'],message['model_param']
         parts = message.split(": ")
         client_id = parts[1].split()[-1]
-        serialized_model_dict = client_socket.recv(4096)
-        model_dict = pickle.loads(serialized_model_dict)
         d_print(f"(In Clientmodel_handle) Client sends model_dict: {model_dict}")
         self.clients[client_id]['model'] = model_dict
         self.clients[client_id]['current_received'] = True

@@ -137,19 +137,31 @@ class Client():
             print("error connecting to the server, terminate!")
             exit(1)
 
-        message_sent = f"Handshake: hello, I am {self.id}, length {len(self.train_data)}, port {self.port}"
-        self.socket.send(message_sent.encode())
+
+        # Creating the handshake message
+        handshake_info = {
+            "type": "string",
+            "sentence": f"Handshake: hello, I am {self.id}, length {len(self.train_data)}, port {self.port}"
+        }
+        # Serializing the message with pickle
+        message_sent = pickle.dumps(handshake_info)
+
+        self.socket.send(message_sent)
+
         d_print(f"(In Client.hand_shake) {self.id} send {message_sent}")
 
         try:
-            response = self.socket.recv(4096).decode()
+            response = self.socket.recv(4096)
+            response = pickle.loads(response)
             d_print(f"(In Client.hand_shake) the response is {response}")
-            if response != f"copy, {self.id}":
-                print("Error hand-shaking, terminate")
-                exit(1)
-            else:
-                pass
+            if response['type'] ==  'string':
                 d_print("(In Client.hand_shake) Success hand-shaking")
+                print("successful handshake")
+                
+            else:
+                d_print("(In Client.hand_shake) Failure hand-shaking")
+                exit(1)
+                
         except socket.timeout:
             print("Error hand-shaking, terminate")
             exit(1)
@@ -174,13 +186,19 @@ class Client():
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect(('127.0.0.1', 6000))
         d_print(f"(In send_local_model) socket re-created and re-connected")
-        message = f"ClientModel: I am {self.id}"
-        self.socket.send(message.encode('utf-8'))
-        d_print(f"(In send_local_model) Client sends {message}")
-        model_dict = self.model.state_dict()
-        serialized_model_dict = pickle.dumps(model_dict)
-        self.socket.send(serialized_model_dict)
-        d_print(f"(In send_local_model) Client then sends {model_dict}")
+ 
+        message_info = {
+        "type": "model",
+        "sentence": f"ClientModel: I am {self.id}",
+        "model_param": self.model.state_dict()
+        }
+
+        # Serialize the entire dictionary with pickle
+        message = pickle.dumps(message_info)
+            
+        # Send the serialized data
+        self.socket.send(message)
+        d_print(f"(In send_local_model) Client  sends {message}")
     
 if __name__ == "__main__":
     d_print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
