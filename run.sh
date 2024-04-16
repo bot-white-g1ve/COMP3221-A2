@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 
 dir="/Users/fizz/Desktop/COMP3221-A2"
 
@@ -15,3 +15,6 @@ for i in {1..5}
 do
   client_index=$((i - 1))  # Convert 1-based index to 0-based for the array
   echo "Starting client $i..."
+  osascript -e "tell application \"Terminal\" to do script \"cd '$dir'; python3 COMP3221_FLClient.py client$i $((6000 + i)) 0\""
+  sleep ${sleep_durations[$client_index]}  # Use adjusted index to access correct sleep duration
+done
