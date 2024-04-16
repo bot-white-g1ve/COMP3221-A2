@@ -35,21 +35,27 @@ def opt_method_type(opt_method):
 
 
 class Client():
-    def __init__(self, id,port, learning_rate, batch_size):
+    def __init__(self, id,port,opt_method):
         self.id = id
         self.port = port
-        self.batch_size = batch_size
+        self.batch_size = 64
         self.loss = nn.MSELoss()
+        self.iteration = 0
 
         self.load_and_preprocess_data()
 
         self.model = nn.Linear(in_features=8, out_features=1)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.receive_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.receive_socket.bind(('127.0.0.1', port))
         self.receive_socket.listen(1)
+
+   
+    def logging(self,str):
+        with open(f"{self.id}_log.txt", 'a') as f:
+            f.write(f"{str}\n")
 
     def load_data_from_csv(self, csv_path):
        # Read dataset
@@ -79,7 +85,7 @@ class Client():
         print("Local training...")
         self.model.train()
         
-        total_loss = 0
+        total_loss = 0  
         total_batches = 0
         for epoch in range(1, epochs + 1):
             for batch_idx, (X, y) in enumerate(self.trainloader):
@@ -92,6 +98,8 @@ class Client():
                 self.optimizer.step()
 
         print(f"Training MSE: {total_loss/total_batches}")
+        self.logging(f"Training MSE: {total_loss/total_batches}\n")
+
         d_print("train finished")
         return total_loss/total_batches
 
@@ -105,6 +113,7 @@ class Client():
             total_batch += 1
 
         print(f"Testing MSE: {total_loss/total_batch}")
+        self.logging(f"Testing MSE: {total_loss/total_batch}")
         d_print("test finished")
 
         return total_loss/total_batch
@@ -122,8 +131,14 @@ class Client():
         self.test_data = TensorDataset(torch.tensor(self.X_test, dtype=torch.float32), torch.tensor(self.y_test, dtype=torch.float32))
 
         # Define DataLoader for iterable dataset
-        self.trainloader = DataLoader(self.train_data, batch_size=self.batch_size)
-        self.testloader = DataLoader(self.test_data, batch_size=self.batch_size)
+
+        if opt_method==0:
+            self.trainloader = DataLoader(self.train_data, batch_size= len(self.train_data))
+            self.testloader = DataLoader(self.test_data, batch_size = len(self.test_data))
+            
+        else:
+            self.trainloader = DataLoader(self.train_data, batch_size=self.batch_size)
+            self.testloader = DataLoader(self.test_data, batch_size=self.batch_size)
         
         d_print(f"(In Client.load_and_preprocess_data) the num of data points: {len(self.train_data)}")
         d_print(f"(In Client.load_and_preprocess_data) the num of batches: {len(self.trainloader)}")
@@ -219,11 +234,13 @@ if __name__ == "__main__":
 
     client_id,client_port,opt_method = args.client_id,args.client_port,args.opt_method
 
-    client = Client(client_id,client_port,0.001, 64)
+    client = Client(client_id,client_port,opt_method)
     client.hand_shake()
 
     while True:
         client.receive_model()
+        client.iteration+=1
+        client.logging(f"Iteration{client.iteration}")
         test_loss = client.test()
         train_loss = client.train(10)
         client.send_local_model()

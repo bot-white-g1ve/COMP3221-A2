@@ -130,7 +130,7 @@ class Server():
                     d_print("(In Server.receive_messages) Waiting for 30 seconds then boardcase")
 
                     def send_model_after_delay():
-                        time.sleep(30)
+                        time.sleep(15)
                         self.send_model_dict()
 
                     threading.Thread(target=send_model_after_delay).start()
