@@ -35,7 +35,7 @@ class Server():
         self.max_num_clients = 5
         self.model = nn.Linear(in_features=8, out_features=1)
         self.iterations = 100
-        self.sub_sample = sub_sample
+        self.sub_sample = int(sub_sample)
         
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.bind(('127.0.0.1', port))

@@ -35,21 +35,29 @@ def opt_method_type(opt_method):
 
 
 class Client():
-    def __init__(self, id,port, learning_rate, batch_size):
+    def __init__(self, id,port,opt_method):
         self.id = id
         self.port = port
-        self.batch_size = batch_size
+        self.batch_size = 64
+        self.mini_batch_size = 64*5
         self.loss = nn.MSELoss()
+        self.iteration = 0
+        self.opt_method = opt_method
 
         self.load_and_preprocess_data()
 
         self.model = nn.Linear(in_features=8, out_features=1)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.receive_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.receive_socket.bind(('127.0.0.1', port))
         self.receive_socket.listen(1)
+
+   
+    def logging(self,str):
+        with open(f"{self.id}_log.txt", 'a') as f:
+            f.write(f"{str}\n")
 
     def load_data_from_csv(self, csv_path):
        # Read dataset
@@ -79,8 +87,9 @@ class Client():
         print("Local training...")
         self.model.train()
         
-        total_loss = 0
+        total_loss = 0  
         total_batches = 0
+        if 
         for epoch in range(1, epochs + 1):
             for batch_idx, (X, y) in enumerate(self.trainloader):
                 self.optimizer.zero_grad()
@@ -91,7 +100,10 @@ class Client():
                 loss.backward()
                 self.optimizer.step()
 
-        print(f"Training MSA: {total_loss/total_batches}")
+        print(f"Training MSE: {total_loss/total_batches}")
+        self.logging(f"Training MSE: {total_loss/total_batches}\n")
+
+        d_print("train finished")
         return total_loss/total_batches
 
     def test(self):
@@ -104,6 +116,8 @@ class Client():
             total_batch += 1
 
         print(f"Testing MSE: {total_loss/total_batch}")
+        self.logging(f"Testing MSE: {total_loss/total_batch}")
+        d_print("test finished")
 
         return total_loss/total_batch
     
@@ -120,8 +134,14 @@ class Client():
         self.test_data = TensorDataset(torch.tensor(self.X_test, dtype=torch.float32), torch.tensor(self.y_test, dtype=torch.float32))
 
         # Define DataLoader for iterable dataset
-        self.trainloader = DataLoader(self.train_data, batch_size=self.batch_size)
-        self.testloader = DataLoader(self.test_data, batch_size=self.batch_size)
+
+        if self.opt_method==0: # GD
+            self.trainloader = DataLoader(self.train_data, batch_size = len(self.train_data))
+            self.testloader = DataLoader(self.test_data, batch_size = 1)
+
+        else: # mini-batch GD
+            self.trainloader = DataLoader(self.train_data, batch_size=self.batch_size)
+            self.testloader = DataLoader(self.test_data, batch_size = 1)
         
         d_print(f"(In Client.load_and_preprocess_data) the num of data points: {len(self.train_data)}")
         d_print(f"(In Client.load_and_preprocess_data) the num of batches: {len(self.trainloader)}")
@@ -135,42 +155,74 @@ class Client():
             print("error connecting to the server, terminate!")
             exit(1)
 
-        message_sent = f"Handshake: hello, I am {self.id}, length {len(self.train_data)}, port {self.port}"
-        self.socket.send(message_sent.encode())
+
+        # Creating the handshake message
+        handshake_info = {
+            "type": "string",
+            "message": f"Handshake: hello, I am {self.id}, length {len(self.train_data)}, port {self.port}"
+        }
+        # Serializing the message with pickle
+        message_sent = pickle.dumps(handshake_info)
+
+        self.socket.send(message_sent)
+
         d_print(f"(In Client.hand_shake) {self.id} send {message_sent}")
 
         try:
-            response = self.socket.recv(4096).decode()
+            response = self.socket.recv(4096)
+            response = pickle.loads(response)
             d_print(f"(In Client.hand_shake) the response is {response}")
-            if response != f"copy, {self.id}":
-                print("Error hand-shaking, terminate")
-                exit(1)
-            else:
-                pass
+            if response['type'] ==  'string':
                 d_print("(In Client.hand_shake) Success hand-shaking")
+                print("successful handshake")
+                
+            else:
+                d_print("(In Client.hand_shake) Failure hand-shaking")
+                exit(1)
+                
         except socket.timeout:
             print("Error hand-shaking, terminate")
             exit(1)
         finally:
             self.socket.settimeout(default_timeout)
         
+        d_print(f"(In Client.hand_shake) The client close client.socket")
+        self.socket.close()
+        
     def receive_model(self):
         server_socket, server_address = self.receive_socket.accept()
-        message = server_socket.recv(4096).decode('utf-8')
-        if message.startswith('ServerSend: '):
-            print(f"I am {self.id}")
-            print("Received new global model")
-            d_print(f"(In receive_model) Receive from server: {message}")
-            parts = message.split(": ")
-            serialized_model_dict = parts[1]
-            model_dict = pickle.loads(serialized_model_dict.encode('utf-8'))
-            self.model.load_state_dict(model_dict)
-        else:
-            print("error receiving aggregated model, terminate!")
+        serialized_model_dict = server_socket.recv(4096)
+        model_dict = pickle.loads(serialized_model_dict)
+
+        if len(model_dict) == 1 and model_dict['message'] == "Completed":
+            print("Finished Training")
+            server_socket.close()
             exit(1)
 
+        print(f"I am {self.id}")
+        print("Received new global model")
+        d_print(f"(In receive_model) Receive from server: {model_dict}")
+        self.model.load_state_dict(model_dict)
+        server_socket.close()
+
     def send_local_model(self):
+        print("Sending new local model\n")
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect(('127.0.0.1', 6000))
+        d_print(f"(In send_local_model) socket re-created and re-connected")
+ 
+        message_info = {
+        "type": "model",
+        "message": f"ClientModel: I am {self.id}",
+        "model_param": self.model.state_dict()
+        }
+
+        # Serialize the entire dictionary with pickle
+        message = pickle.dumps(message_info)
+            
+        # Send the serialized data
+        self.socket.send(message)
+        d_print(f"(In send_local_model) Client  sends {message}")
     
 if __name__ == "__main__":
     d_print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -185,10 +237,13 @@ if __name__ == "__main__":
 
     client_id,client_port,opt_method = args.client_id,args.client_port,args.opt_method
 
-    client = Client(client_id,client_port,0.001, 64)
+    client = Client(client_id,client_port,opt_method)
     client.hand_shake()
 
     while True:
         client.receive_model()
+        client.iteration+=1
+        client.logging(f"Iteration{client.iteration}")
         test_loss = client.test()
         train_loss = client.train(10)
+        client.send_local_model()

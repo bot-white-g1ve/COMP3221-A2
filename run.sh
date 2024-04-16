@@ -1,6 +1,6 @@
 #!/bin/bash 
 
-dir="/Users/fizz/Desktop/COMP3221-A2"
+dir="/Users/advancedai/Desktop/UniIssue/comp3221/A2/COMP3221-A2"
 
 # Start the server in a new Terminal window
 osascript -e "tell application \"Terminal\" to do script \"cd '$dir'; python3 COMP3221_FLServer.py 6000 0\""
@@ -15,6 +15,6 @@ for i in {1..5}
 do
   client_index=$((i - 1))  # Convert 1-based index to 0-based for the array
   echo "Starting client $i..."
-  osascript -e "tell application \"Terminal\" to do script \"cd '$dir'; python3 COMP3221_FLClient.py client$i $((6000 + i)) 0\""
+  osascript -e "tell application \"Terminal\" to do script \"cd '$dir'; python3 COMP3221_FLClient.py client$i $((6000 + i)) 1\""
   sleep ${sleep_durations[$client_index]}  # Use adjusted index to access correct sleep duration
 done

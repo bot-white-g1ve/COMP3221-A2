@@ -1,12 +1,13 @@
 import pandas as pd
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, RandomSampler
 import numpy as np
 import argparse
 import socket
 from datetime import datetime
 import pickle
+import random
 
 # for debuging
 def d_print(str):
@@ -41,6 +42,7 @@ class Client():
         self.batch_size = 64
         self.loss = nn.MSELoss()
         self.iteration = 0
+        self.opt_method = int(opt_method)
 
         self.load_and_preprocess_data()
 
@@ -86,22 +88,34 @@ class Client():
         self.model.train()
         
         total_loss = 0  
-        total_batches = 0
-        for epoch in range(1, epochs + 1):
-            for batch_idx, (X, y) in enumerate(self.trainloader):
-                self.optimizer.zero_grad()
-                output = self.model(X).squeeze()
-                loss = self.loss(output, y)
-                total_loss += loss.item()
-                total_batches += 1
-                loss.backward()
-                self.optimizer.step()
+        if self.opt_method == 0:
+            for epoch in range(1, epochs + 1):
+                for batch_idx, (X, y) in enumerate(self.trainloader):
+                    self.optimizer.zero_grad()
+                    output = self.model(X).squeeze()
+                    loss = self.loss(output, y)
+                    total_loss += loss.item()
+                    loss.backward()
+                    self.optimizer.step()
+        else:
+            random_sampler = RandomSampler(self.train_data, replacement=False, num_samples=self.batch_size)
+            self.trainloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=random_sampler)
+            d_print("(In train) The opt method is 1, so we randomly pick observations")
+            d_print(f"(In train) the num of batches: {len(self.trainloader)}")
+            for epoch in range(1, epochs + 1):
+                for batch_idx, (X, y) in enumerate(self.trainloader):
+                    self.optimizer.zero_grad()
+                    output = self.model(X).squeeze()
+                    loss = self.loss(output, y)
+                    total_loss += loss.item()
+                    loss.backward()
+                    self.optimizer.step()
 
-        print(f"Training MSE: {total_loss/total_batches}")
-        self.logging(f"Training MSE: {total_loss/total_batches}\n")
+        print(f"Training MSE: {total_loss/epochs}")
+        self.logging(f"Training MSE: {total_loss/epochs}\n")
 
         d_print("train finished")
-        return total_loss/total_batches
+        return total_loss/epochs
 
     def test(self):
         self.model.eval()
@@ -132,16 +146,13 @@ class Client():
 
         # Define DataLoader for iterable dataset
 
-        if opt_method==0:
-            self.trainloader = DataLoader(self.train_data, batch_size= len(self.train_data))
-            self.testloader = DataLoader(self.test_data, batch_size = len(self.test_data))
-            
-        else:
-            self.trainloader = DataLoader(self.train_data, batch_size=self.batch_size)
-            self.testloader = DataLoader(self.test_data, batch_size=self.batch_size)
+        if self.opt_method==0: # GD
+            d_print("(In Client.load_and_preprocess_data) The opt method is 0, so we use the full dataset")
+            self.trainloader = DataLoader(self.train_data, batch_size = len(self.train_data))
+            d_print(f"(In Client.load_and_preprocess_data) the num of batches: {len(self.trainloader)}")
+        self.testloader = DataLoader(self.test_data, batch_size = 1)
         
         d_print(f"(In Client.load_and_preprocess_data) the num of data points: {len(self.train_data)}")
-        d_print(f"(In Client.load_and_preprocess_data) the num of batches: {len(self.trainloader)}")
 
     def hand_shake(self):
         default_timeout = self.socket.gettimeout()
