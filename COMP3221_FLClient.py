@@ -7,7 +7,6 @@ import argparse
 import socket
 from datetime import datetime
 import pickle
-import random
 
 lr = 0.05
 epochs = 20
@@ -66,6 +65,7 @@ class Client():
         with open(f"{self.id}_log.txt", 'a') as f:
             f.write(f"{str}\n")
 
+    # load and normalize data 
     def load_data_from_csv(self, csv_path):
        # Read dataset
         df = pd.read_csv(csv_path)
@@ -95,6 +95,8 @@ class Client():
         self.model.train()
         
         total_loss = 0  
+
+        # GD 
         if self.opt_method == 0:
             for epoch in range(1, epochs + 1):
                 for batch_idx, (X, y) in enumerate(self.trainloader):
@@ -104,6 +106,8 @@ class Client():
                     total_loss += loss.item()
                     loss.backward()
                     self.optimizer.step()
+
+        # mini batch GD
         else:
             random_sampler = RandomSampler(self.train_data, replacement=False, num_samples=self.batch_size)
             self.trainloader = DataLoader(self.train_data, batch_size=self.batch_size, sampler=random_sampler)
@@ -139,6 +143,7 @@ class Client():
 
         return total_loss/total_batch
     
+    # load into dataloaders
     def load_and_preprocess_data(self):
 
         training_path = f'FLData/calhousing_train_{self.id}.csv'
@@ -161,6 +166,7 @@ class Client():
         
         d_print(f"(In Client.load_and_preprocess_data) the num of data points: {len(self.train_data)}")
 
+    # send handshhake message
     def hand_shake(self):
         default_timeout = self.socket.gettimeout()
         self.socket.settimeout(20)
@@ -169,7 +175,6 @@ class Client():
         except Exception:
             print("error connecting to the server, terminate!")
             exit(1)
-
 
         # Creating the handshake message
         handshake_info = {
@@ -183,6 +188,7 @@ class Client():
 
         d_print(f"(In Client.hand_shake) {self.id} send {message_sent}")
 
+        # reply handshake message
         try:
             response = self.socket.recv(4096)
             response = pickle.loads(response)
@@ -203,36 +209,40 @@ class Client():
         
         d_print(f"(In Client.hand_shake) The client close client.socket")
         self.socket.close()
-        
+    
+    # receive function for clients
     def receive_model(self):
         server_socket, server_address = self.receive_socket.accept()
         serialized_model_dict = server_socket.recv(4096)
         model_dict = pickle.loads(serialized_model_dict)
-
+        
+        # receive finishing message
         if len(model_dict) == 1 and model_dict['message'] == "Completed":
             print("Finished Training")
             server_socket.close()
             exit(1)
 
+        # receive model
         print(f"I am {self.id}")
         print("Received new global model")
         d_print(f"(In receive_model) Receive from server: {model_dict}")
         self.model.load_state_dict(model_dict)
         server_socket.close()
 
+    # send current local model to the server
     def send_local_model(self):
         print("Sending new local model\n")
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect(('127.0.0.1', 6000))
         d_print(f"(In send_local_model) socket re-created and re-connected")
- 
+
+        # send message info dict with types, messages and model parameter
         message_info = {
         "type": "model",
         "message": f"ClientModel: I am {self.id}",
         "model_param": self.model.state_dict()
         }
 
-        # Serialize the entire dictionary with pickle
         message = pickle.dumps(message_info)
             
         # Send the serialized data

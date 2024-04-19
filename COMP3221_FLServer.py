@@ -1,8 +1,6 @@
-import pandas as pd
 import torch
 import torch.nn as nn
-import numpy as np
-import argparse
+import argparse 
 import socket
 import threading
 from datetime import datetime
@@ -49,6 +47,7 @@ class Server():
         self.current_iteration = 0
         self.num_current_received = 0
     
+    # close connections when iterations are fininshed
     def close_server(self):
         final_message = {"message":"Completed"}
         serialized_message = pickle.dumps(final_message)
@@ -65,6 +64,7 @@ class Server():
 
         self.socket.close()
 
+    # aggregare parameters from clients
     def aggregate_parameters(self):
         if self.iterations == self.current_iteration:
             print("Finished training")
@@ -75,13 +75,13 @@ class Server():
         # Get the state dictionary of the server model
         server_state_dict = self.model.state_dict()
         d_print(f"(In aggregate_parameters) The original dict_state is {server_state_dict}")
+        
         # Initialize an empty state dict to accumulate updates
         aggregated_state_dict = {key: torch.zeros_like(value) for key, value in server_state_dict.items()}
 
-         # Use only clients that are ready to participate
         selected_clients = self.get_joined_users()
 
-        # Determine the number of clients to subsample or include all
+        # Determine the number of clients
         if self.sub_sample > 0:
             print(f"sub_sample:{self.sub_sample}, available:{len(selected_clients)}")
             selected_clients = random.sample(selected_clients, min(self.sub_sample, len(selected_clients)))
@@ -94,6 +94,7 @@ class Server():
             user_state_dict = client['model']
             for key in server_state_dict:
                 aggregated_state_dict[key] += user_state_dict[key] * client['size'] / total_samples_for_aggregation
+
         # Load the aggregated state dict back into the server model
         d_print(f"(In aggregate_parameters) The aggregated_state_dict is {aggregated_state_dict}")
         self.model.load_state_dict(aggregated_state_dict, strict=True)
@@ -103,12 +104,6 @@ class Server():
         for client_id in self.clients:
             self.clients[client_id]['ready'] = True
 
-    def evaluate(self, users):
-        total_mse = 0
-        for user in users:
-            total_mse += user.test()
-        return total_mse/len(users)
-    
     # receive messages and redirect to every functions
     def receive_messages(self):
         print("Server successfully launched, listening to clients...\n")
@@ -124,6 +119,7 @@ class Server():
 
             d_print(f"(In Server.receive_messages) {client_address} send {message}")
 
+            # receive handshake message
             if message['type'] == 'string' and message['message'].startswith('Handshake: '):
                 current_time = time.time()
                 if self.first_handshake_received is None:
@@ -136,10 +132,12 @@ class Server():
                         time.sleep(15)
                         self.send_model_dict()
 
+                    # initiate a thread for the countdown
                     threading.Thread(target=send_model_after_delay).start()
                     
                 self.handshake_reply(message['message'], client_socket)
 
+            # receive client model
             elif message['type'] == 'model' and message['message'].startswith('ClientModel: '):
                 self.clientmodel_handle(message, client_socket)
 
@@ -150,6 +148,7 @@ class Server():
         client_train_data_size = int(parts[2].split()[-1])
         client_port = int(parts[3].split()[-1])
         
+        # Mark the clients as ready if it joins within registration period
         time_difference = time.time() - self.first_handshake_received
         if time_difference <= 15:
             ready = True
@@ -163,6 +162,7 @@ class Server():
             "type": "string",
             "message": f"copy, {client_id}"
             }
+        
         # Serializing the message with pickle
         response_message = pickle.dumps(response_message)
         
@@ -191,8 +191,8 @@ class Server():
         print(f"Global Iteration: {self.current_iteration}")
         print(f"Total Number of Clients: {len(self.clients.keys())}")
     
+    # record the model 
     def clientmodel_handle(self, message, client_socket):
-        
         message,model_dict = message['message'],message['model_param']
         parts = message.split(": ")
         client_id = parts[1].split()[-1]
@@ -206,6 +206,7 @@ class Server():
             self.aggregate_parameters()
         client_socket.close()
 
+    # get the ready users
     def get_joined_users(self):
         selected_clients = [client_id for client_id in self.clients if self.clients[client_id]['ready']]
         return selected_clients
