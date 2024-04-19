@@ -51,6 +51,7 @@ class Server():
     def close_server(self):
         final_message = {"message":"Completed"}
         serialized_message = pickle.dumps(final_message)
+        
         for client_id, client_info in self.clients.items():
             self.send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_port = client_info['port']
@@ -58,7 +59,7 @@ class Server():
                 self.send_socket.connect(('127.0.0.1', client_port))
                 self.send_socket.send(serialized_message)
             except Exception as e:
-                print(f"Failed to send final message to client {client_id}: {str(e)}")
+                print(f"client {client_id} is down!")
             finally:
                 self.send_socket.close()
 
@@ -108,38 +109,52 @@ class Server():
     def receive_messages(self):
         print("Server successfully launched, listening to clients...\n")
         while True:
-            client_socket, client_address = self.socket.accept()
-            serialized_data = client_socket.recv(4096)
-            if serialized_data:
-                # Deserialize the data using pickle
-                message = pickle.loads(serialized_data)
+            try:
+                if self.first_handshake_received is not None and time.time()-self.first_handshake_received>30:
+                    self.socket.settimeout(30.0)  # Set timeout for 30 seconds
 
-            else:
-                print("error: empty data")
+                client_socket, client_address = self.socket.accept()
+                serialized_data = client_socket.recv(4096)
+                if serialized_data:
+                    # Deserialize the data using pickle
+                    message = pickle.loads(serialized_data)
 
-            d_print(f"(In Server.receive_messages) {client_address} send {message}")
+                else:
+                    print("error: empty data")
 
-            # receive handshake message
-            if message['type'] == 'string' and message['message'].startswith('Handshake: '):
-                current_time = time.time()
-                if self.first_handshake_received is None:
-                # if this is the first client connected
-                    self.first_handshake_received = current_time
-                    print("The fisrt handshake received, wait for 30 seconds then training begins\n")
-                    d_print("(In Server.receive_messages) Waiting for 30 seconds then boardcase")
+                d_print(f"(In Server.receive_messages) {client_address} send {message}")
 
-                    def send_model_after_delay():
-                        time.sleep(15)
-                        self.send_model_dict()
+                # receive handshake message
+                if message['type'] == 'string' and message['message'].startswith('Handshake: '):
+                    current_time = time.time()
+                    if self.first_handshake_received is None:
+                    # if this is the first client connected
+                        self.first_handshake_received = current_time
+                        print("The fisrt handshake received, wait for 30 seconds then training begins\n")
+                        d_print("(In Server.receive_messages) Waiting for 30 seconds then boardcase")
 
-                    # initiate a thread for the countdown
-                    threading.Thread(target=send_model_after_delay).start()
-                    
-                self.handshake_reply(message['message'], client_socket)
+                        def send_model_after_delay():
+                            time.sleep(30)
+                            self.send_model_dict()
 
-            # receive client model
-            elif message['type'] == 'model' and message['message'].startswith('ClientModel: '):
-                self.clientmodel_handle(message, client_socket)
+                        # initiate a thread for the countdown
+                        threading.Thread(target=send_model_after_delay).start()
+                        
+                    self.handshake_reply(message['message'], client_socket)
+
+                # receive client model
+                elif message['type'] == 'model' and message['message'].startswith('ClientModel: '):
+                    self.clientmodel_handle(message, client_socket)
+
+            except socket.timeout:
+                print("At least one client is down.")
+                print("Closing server...")
+                self.close_server()
+                exit(1)
+
+            except Exception as e:
+                print(f"An error occurred: {str(e)}")
+
 
     # handing handshake, add to self.clients
     def handshake_reply(self, message, client_socket):
@@ -150,7 +165,7 @@ class Server():
         
         # Mark the clients as ready if it joins within registration period
         time_difference = time.time() - self.first_handshake_received
-        if time_difference <= 15:
+        if time_difference <= 30:
             ready = True
         else:
             print(f"{client_id} will be in the next iteration")
