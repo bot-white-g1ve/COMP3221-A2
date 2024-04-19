@@ -147,6 +147,7 @@ class Server():
                     self.clientmodel_handle(message, client_socket)
 
             except socket.timeout:
+                print("\n")
                 print("At least one client is down.")
                 print("Closing server...")
                 self.close_server()
