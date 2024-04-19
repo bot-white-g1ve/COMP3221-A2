@@ -133,7 +133,7 @@ class Client():
         total_loss = 0
         total_batch = 0
         for x, y in self.testloader:
-            y_pred = self.model(x).squeeze()
+            y_pred = self.model(x).squeeze(-1)
             total_loss += self.loss(y_pred, y)
             total_batch += 1
 
