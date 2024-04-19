@@ -12,8 +12,11 @@ import random
 
 # for debuging
 def d_print(str):
-    with open("server_debug.txt", 'a') as f:
+    pass
+    '''
+    with open("client_debug.txt", 'a') as f:
         f.write(f"{str}\n")
+    '''
 
 # for checking server port validity
 def port_server(id):

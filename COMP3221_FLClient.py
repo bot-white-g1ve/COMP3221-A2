@@ -9,11 +9,18 @@ from datetime import datetime
 import pickle
 import random
 
+lr = 0.05
+epochs = 20
+mini_batch_size = 1500
+
 # for debuging
 def d_print(str):
+    pass
+    '''
     with open("client_debug.txt", 'a') as f:
         f.write(f"{str}\n")
-
+    '''
+        
 # check if client_id is valid
 def client_id_type(client_id):
     valid_client_ids = [f'client{i}' for i in range(1,6)]
@@ -39,7 +46,7 @@ class Client():
     def __init__(self, id,port,opt_method):
         self.id = id
         self.port = port
-        self.batch_size = 750
+        self.batch_size = mini_batch_size
         self.loss = nn.MSELoss()
         self.iteration = 0
         self.opt_method = int(opt_method)
@@ -47,7 +54,7 @@ class Client():
         self.load_and_preprocess_data()
 
         self.model = nn.Linear(in_features=8, out_features=1)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.005)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.receive_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -253,5 +260,5 @@ if __name__ == "__main__":
         client.iteration+=1
         client.logging(f"Iteration{client.iteration}")
         test_loss = client.test()
-        train_loss = client.train(20)
+        train_loss = client.train(epochs)
         client.send_local_model()
